@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explorateur Interactif de Taquets de Tabulation</title>
+    <style>
+        :root {
+            --bg-color: #f4f7f6;
+            --panel-bg: #ffffff;
+            --accent-color: #3498db;
+            --ruler-bg: #e0e0e0;
+            --text-color: #333;
+            --border-color: #ccc;
+            --ruler-height: 40px;
+            --font-family: 'Courier New', Courier, monospace;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        h1 { text-align: center; margin-bottom: 10px; color: #2c3e50; }
+        
+        .intro {
+            background: #e8f4fc;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 5px solid var(--accent-color);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* Barre d'outils */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        button {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            background: #f9f9f9;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+            font-size: 0.9rem;
+        }
+
+        button:hover { background: #e0e0e0; }
+        button.active { background: var(--accent-color); color: white; border-color: var(--accent-color); }
+
+        /* Icônes de sélection de tabulation */
+        .tab-icon { width: 16px; height: 16px; display: inline-block; vertical-align: middle; position: relative; }
+        
+        /* Formes CSS pour les taquets */
+        .icon-left::after { content:''; position: absolute; bottom:0; left:0; width: 2px; height: 10px; background: currentColor; }
+        .icon-left::before { content:''; position: absolute; bottom:0; left:0; width: 10px; height: 2px; background: currentColor; }
+        
+        .icon-center::after { content:''; position: absolute; bottom:0; left:50%; width: 2px; height: 10px; background: currentColor; transform: translateX(-50%); }
+        .icon-center::before { content:''; position: absolute; bottom:0; left:50%; width: 10px; height: 2px; background: currentColor; transform: translateX(-50%); }
+
+        .icon-right::after { content:''; position: absolute; bottom:0; right:0; width: 2px; height: 10px; background: currentColor; }
+        .icon-right::before { content:''; position: absolute; bottom:0; right:0; width: 10px; height: 2px; background: currentColor; }
+
+        .icon-decimal::after { content:''; position: absolute; bottom:2px; left:50%; width: 2px; height: 8px; background: currentColor; transform: translateX(-50%); }
+        .icon-decimal::before { content:''; position: absolute; bottom:2px; left:50%; width: 10px; height: 2px; background: currentColor; transform: translateX(-50%); }
+        .icon-decimal span { position: absolute; bottom: -2px; left: 10px; width: 3px; height: 3px; background: currentColor; border-radius: 50%; }
+
+        /* Zone de la règle */
+        .editor-wrapper {
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative; /* Le popup se positionne par rapport à ceci */
+        }
+
+        .ruler-container {
+            height: var(--ruler-height);
+            background-color: var(--ruler-bg);
+            position: relative;
+            overflow: hidden;
+            cursor: crosshair;
+            border-bottom: 1px solid #bbb;
+            user-select: none;
+        }
+
+        .ruler-ticks {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Marqueurs de taquets sur la règle */
+        .tab-marker {
+            position: absolute;
+            top: 0;
+            width: 20px;
+            height: 100%;
+            cursor: grab;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            padding-bottom: 2px;
+            color: #333;
+        }
+        .tab-marker:hover { color: var(--accent-color); }
+        .tab-marker.dragging { cursor: grabbing; opacity: 0.7; }
+        .tab-marker .marker-shape { pointer-events: none; }
+
+        /* Zone de travail */
+        .work-area {
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            min-height: 300px;
+            background: white;
+        }
+
+        .input-layer {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            box-sizing: border-box;
+            font-family: var(--font-family);
+            font-size: 16px;
+            border: none;
+            border-bottom: 2px dashed #ddd;
+            resize: vertical;
+            outline: none;
+            background: #fcfcfc;
+        }
+
+        .preview-layer {
+            width: 100%;
+            flex-grow: 1;
+            padding: 20px 10px;
+            box-sizing: border-box;
+            font-family: var(--font-family);
+            font-size: 16px;
+            white-space: pre;
+            overflow-x: auto;
+            background: white;
+            position: relative;
+            cursor: default;
+        }
+
+        /* Lignes rendues */
+        .render-line {
+            position: relative;
+            height: 1.4em; /* Hauteur de ligne ajustée */
+            margin-bottom: 4px;
+            width: 100%;
+            min-width: 800px;
+        }
+
+        .render-segment {
+            position: absolute;
+            white-space: pre;
+            top: 0;
+            z-index: 1; /* Texte au-dessus des pointillés */
+            background: white; /* Fond blanc pour masquer la ligne sous le texte si nécessaire */
+        }
+
+        /* --- CORRECTION PRÉCÉDENTE (Points de suite) --- */
+        .leader-dots {
+            position: absolute;
+            bottom: 4px; /* Alignement avec la ligne de base */
+            height: 14px; /* Hauteur suffisante pour afficher les caractères */
+            line-height: 14px;
+            z-index: 0;
+            color: #999;
+            overflow: hidden;
+            white-space: nowrap;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        /* ------------------------- */
+
+        /* Caractères non imprimables */
+        .npc {
+            color: #ccc;
+            font-weight: normal;
+            display: none;
+        }
+        .show-npc .npc { display: inline; }
+
+        /* Menu contextuel pour les points de suite */
+        .popup-menu {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 100;
+            border-radius: 4px;
+            display: none;
+            flex-direction: column;
+            min-width: 160px;
+        }
+        .popup-menu button {
+            border: none;
+            background: transparent;
+            text-align: left;
+            width: 100%;
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .popup-menu button:last-child { border-bottom: none; }
+        .popup-menu button:hover { background: #f0f0f0; }
+        .popup-menu header {
+            font-size: 0.75rem;
+            padding: 5px 10px;
+            background: #eee;
+            font-weight: bold;
+            color: #555;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .hint {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 5px;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .controls { justify-content: center; }
+            .control-group { flex-wrap: wrap; justify-content: center;}
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Atelier Tabulations</h1>
+    
+    <div class="intro">
+        <strong>Que sont les taquets de tabulation ?</strong> Ce sont des marqueurs invisibles qui indiquent au curseur où sauter lorsque vous appuyez sur la touche <code>Tab</code>. Ils sont essentiels pour aligner des colonnes, des menus et des listes sans avoir à appuyer plusieurs fois sur la barre d'espace.<br>
+        <strong>Comment utiliser :</strong> 
+        1. Sélectionnez un type de tabulation (Gauche, Centre, Droite, Décimal). 
+        2. Cliquez sur la règle pour ajouter un taquet. 
+        3. Glissez les taquets pour les déplacer. Glissez vers le bas hors de la règle pour supprimer.
+        4. Cliquez sur un taquet existant pour changer son "Point de suite" (ligne de remplissage).
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <span>Type :</span>
+            <button id="btn-left" class="active" onclick="setTabType('left')" title="Alignement Gauche">
+                <div class="tab-icon icon-left"></div>
+            </button>
+            <button id="btn-center" onclick="setTabType('center')" title="Alignement Centré">
+                <div class="tab-icon icon-center"></div>
+            </button>
+            <button id="btn-right" onclick="setTabType('right')" title="Alignement Droite">
+                <div class="tab-icon icon-right"></div>
+            </button>
+            <button id="btn-decimal" onclick="setTabType('decimal')" title="Alignement Décimal">
+                <div class="tab-icon icon-decimal"><span></span></div>
+            </button>
+        </div>
+
+        <div class="control-group">
+            <button onclick="toggleNPC()">Afficher ¶</button>
+            <button onclick="resetApp()">Réinitialiser</button>
+        </div>
+    </div>
+
+    <div class="editor-wrapper">
+        <!-- La Règle -->
+        <div id="ruler" class="ruler-container">
+            <canvas id="ruler-canvas" class="ruler-ticks"></canvas>
+            <!-- Les marqueurs seront injectés ici via JS -->
+        </div>
+
+        <!-- Popup pour la sélection des points de suite -->
+        <div id="leader-popup" class="popup-menu">
+            <header>Points de suite</header>
+            <button onclick="setLeader('none')">Aucun</button>
+            <button onclick="setLeader('dot')">Pointillés (.....)</button>
+            <button onclick="setLeader('dash')">Tirets (-----)</button>
+            <button onclick="setLeader('line')">Ligne (_____)</button>
+        </div>
+
+        <div class="work-area">
+            <!-- Zone de saisie -->
+            <div style="background: #f0f0f0; padding: 5px 10px; font-size: 0.8rem; color: #666; border-bottom: 1px solid #eee;">
+                <strong>ÉDITEUR :</strong> Tapez votre texte ici. Utilisez la touche <code>Tab</code> pour séparer les colonnes.
+            </div>
+            <textarea id="input-area" class="input-layer" spellcheck="false"></textarea>
+            
+            <!-- Sortie rendue -->
+            <div style="background: #f0f0f0; padding: 5px 10px; font-size: 0.8rem; color: #666; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
+                <strong>APERÇU :</strong> Voyez comment vos tabulations alignent le texte ci-dessous.
+            </div>
+            <div id="output-display" class="preview-layer"></div>
+        </div>
+    </div>
+    <div class="hint">Astuce : Essayez de taper une liste de prix ! Exemple : "Burger [Tab] 10,50 €"</div>
+</div>
+
+<script>
+    // --- Gestion de l'État ---
+    const state = {
+        selectedType: 'left', // left, center, right, decimal
+        tabStops: [], // { id, position (px), type, leader }
+        content: "Article\tPrix\tAvis\nBurger\t8,50 €\t4,5\nFrites\t3,00 €\t4,0\nSoda\t1,99 €\t3,2\nSteak\t25,00 €\t4,9",
+        showNPC: false,
+        draggingId: null,
+        popupTargetId: null,
+        defaultTabWidth: 50 // largeur en px pour les tabulations par défaut
+    };
+
+    // --- Éléments DOM ---
+    const inputArea = document.getElementById('input-area');
+    const outputDisplay = document.getElementById('output-display');
+    const ruler = document.getElementById('ruler');
+    const rulerCanvas = document.getElementById('ruler-canvas');
+    const leaderPopup = document.getElementById('leader-popup');
+    
+    // --- Initialisation ---
+    function init() {
+        // Définir des tabulations par défaut pour la démo
+        state.tabStops = [
+            { id: Date.now(), position: 150, type: 'left', leader: 'none' },
+            { id: Date.now() + 1, position: 320, type: 'decimal', leader: 'dot' },
+            { id: Date.now() + 2, position: 450, type: 'center', leader: 'none' }
+        ];
+
+        inputArea.value = state.content;
+        
+        drawRulerTicks();
+        renderTabs();
+        renderText();
+        
+        // Écouteurs d'événements
+        window.addEventListener('resize', drawRulerTicks);
+        
+        // Gestion de la saisie
+        inputArea.addEventListener('input', (e) => {
+            state.content = e.target.value;
+            renderText();
+        });
+
+        inputArea.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = inputArea.selectionStart;
+                const end = inputArea.selectionEnd;
+                inputArea.value = inputArea.value.substring(0, start) + "\t" + inputArea.value.substring(end);
+                inputArea.selectionStart = inputArea.selectionEnd = start + 1;
+                state.content = inputArea.value;
+                renderText();
+            }
+        });
+
+        // Interactions avec la règle
+        ruler.addEventListener('mousedown', handleRulerMouseDown);
+        window.addEventListener('mousemove', handleDrag);
+        window.addEventListener('mouseup', handleDragEnd);
+
+        // Fermer le popup si on clique en dehors
+        window.addEventListener('mousedown', (e) => {
+            if (!e.target.closest('.popup-menu') && !e.target.closest('.tab-marker')) {
+                leaderPopup.style.display = 'none';
+            }
+        });
+    }
+
+    // --- Logique Principale : Rendu du Texte ---
+    function renderText() {
+        outputDisplay.innerHTML = '';
+        const lines = state.content.split('\n');
+        
+        // Trier les tabulations par position
+        const sortedTabs = [...state.tabStops].sort((a, b) => a.position - b.position);
+
+        // Canvas pour mesurer le texte
+        const ctx = document.createElement('canvas').getContext('2d');
+        ctx.font = "16px 'Courier New', Courier, monospace"; // Doit correspondre au CSS
+
+        lines.forEach(line => {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'render-line';
+            
+            const segments = line.split('\t');
+            let currentX = 10; // Commencer avec un petit padding
+
+            segments.forEach((text, index) => {
+                const segmentSpan = document.createElement('span');
+                segmentSpan.className = 'render-segment';
+                
+                let displayText = text;
+                segmentSpan.textContent = displayText;
+                
+                const textWidth = ctx.measureText(text).width;
+                
+                if (index === 0) {
+                    // Le premier segment commence à 0 (plus padding)
+                    segmentSpan.style.left = currentX + 'px';
+                    currentX += textWidth;
+                } else {
+                    // Trouver le prochain taquet applicable
+                    const applicableTab = sortedTabs.find(t => t.position > currentX);
+                    
+                    let targetX = currentX;
+                    let leaderStyle = 'none';
+
+                    if (applicableTab) {
+                        leaderStyle = applicableTab.leader;
+                        
+                        // Calculer l'alignement
+                        if (applicableTab.type === 'left') {
+                            targetX = applicableTab.position;
+                        } else if (applicableTab.type === 'right') {
+                            targetX = applicableTab.position - textWidth;
+                        } else if (applicableTab.type === 'center') {
+                            targetX = applicableTab.position - (textWidth / 2);
+                        } else if (applicableTab.type === 'decimal') {
+                            const dotIndex = text.indexOf(','); // Utilisation de la virgule pour le français
+                            const effectiveDotIndex = dotIndex !== -1 ? dotIndex : text.indexOf('.');
+                            
+                            if (effectiveDotIndex !== -1) {
+                                const widthBeforeDot = ctx.measureText(text.substring(0, effectiveDotIndex)).width;
+                                targetX = applicableTab.position - widthBeforeDot;
+                            } else {
+                                targetX = applicableTab.position - textWidth;
+                            }
+                        }
+                    } else {
+                        // Comportement par défaut : Sauter de 50px
+                        targetX = Math.ceil(currentX / state.defaultTabWidth) * state.defaultTabWidth;
+                        if (targetX <= currentX) targetX += state.defaultTabWidth;
+                    }
+
+                    // S'assurer que le texte ne chevauche pas le segment précédent
+                    if (targetX < currentX) targetX = currentX + 10;
+
+                    // Rendu du Point de Suite (Leader)
+                    if (leaderStyle !== 'none' && applicableTab) {
+                        const leaderDiv = document.createElement('div');
+                        leaderDiv.className = 'leader-dots';
+                        
+                        leaderDiv.style.left = currentX + 'px';
+                        leaderDiv.style.width = (targetX - currentX) + 'px';
+                        
+                        let char = '.';
+                        if (leaderStyle === 'dash') char = '-';
+                        if (leaderStyle === 'line') char = '_';
+                        
+                        leaderDiv.textContent = char.repeat(150); 
+                        lineDiv.appendChild(leaderDiv);
+                    }
+
+                    // Rendu de la Flèche de Tabulation (NPC)
+                    if (state.showNPC) {
+                        const arrow = document.createElement('span');
+                        arrow.className = 'npc';
+                        arrow.textContent = '→';
+                        arrow.style.position = 'absolute';
+                        arrow.style.left = (currentX + 2) + 'px';
+                        arrow.style.color = '#bbb';
+                        arrow.style.fontSize = '12px';
+                        lineDiv.appendChild(arrow);
+                    }
+
+                    segmentSpan.style.left = targetX + 'px';
+                    currentX = targetX + textWidth;
+                }
+
+                lineDiv.appendChild(segmentSpan);
+            });
+
+            // Marque de paragraphe
+            if (state.showNPC) {
+                const pMark = document.createElement('span');
+                pMark.className = 'npc';
+                pMark.textContent = '¶';
+                pMark.style.position = 'absolute';
+                pMark.style.left = (currentX + 5) + 'px';
+                lineDiv.appendChild(pMark);
+            }
+
+            outputDisplay.appendChild(lineDiv);
+        });
+    }
+
+    // --- Rendu de la Règle ---
+    function drawRulerTicks() {
+        const width = ruler.clientWidth;
+        const height = ruler.clientHeight;
+        
+        rulerCanvas.width = width;
+        rulerCanvas.height = height;
+        
+        const ctx = rulerCanvas.getContext('2d');
+        ctx.strokeStyle = '#999';
+        ctx.lineWidth = 1;
+        ctx.font = "10px Arial";
+        ctx.fillStyle = "#666";
+
+        const pxPerCm = 40;
+        
+        for (let x = 0; x < width; x += pxPerCm/10) {
+            let tickHeight = 5;
+            const isCm = Math.abs(x % pxPerCm) < 1;
+            const isHalfCm = Math.abs(x % (pxPerCm/2)) < 1;
+
+            if (isCm) {
+                tickHeight = 15;
+                const cmVal = Math.round(x / pxPerCm);
+                if(cmVal > 0) ctx.fillText(cmVal, x + 2, height - 18);
+            } else if (isHalfCm) {
+                tickHeight = 10;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(x, height);
+            ctx.lineTo(x, height - tickHeight);
+            ctx.stroke();
+        }
+    }
+
+    function renderTabs() {
+        document.querySelectorAll('.tab-marker').forEach(el => el.remove());
+
+        state.tabStops.forEach(tab => {
+            const el = document.createElement('div');
+            el.className = 'tab-marker';
+            el.style.left = (tab.position - 10) + 'px';
+            el.dataset.id = tab.id;
+
+            let iconClass = '';
+            switch(tab.type) {
+                case 'left': iconClass = 'icon-left'; break;
+                case 'center': iconClass = 'icon-center'; break;
+                case 'right': iconClass = 'icon-right'; break;
+                case 'decimal': iconClass = 'icon-decimal'; break;
+            }
+
+            el.innerHTML = `<div class="marker-shape tab-icon ${iconClass}"><span></span></div>`;
+            
+            el.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                state.draggingId = tab.id;
+                el.classList.add('dragging');
+                
+                const startX = e.clientX;
+                const onUp = (upE) => {
+                    if (Math.abs(upE.clientX - startX) < 3) {
+                        openLeaderMenu(tab.id, e.clientX, e.clientY);
+                    }
+                    window.removeEventListener('mouseup', onUp);
+                };
+                window.addEventListener('mouseup', onUp);
+            });
+
+            ruler.appendChild(el);
+        });
+    }
+
+    // --- Interactions ---
+
+    function setTabType(type) {
+        state.selectedType = type;
+        document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-' + type).classList.add('active');
+    }
+
+    function handleRulerMouseDown(e) {
+        if (e.target !== ruler && e.target !== rulerCanvas) return;
+        
+        const rect = ruler.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        
+        const newTab = {
+            id: Date.now(),
+            position: x,
+            type: state.selectedType,
+            leader: 'none'
+        };
+        
+        state.tabStops.push(newTab);
+        state.draggingId = newTab.id;
+        renderTabs();
+        renderText();
+    }
+
+    function handleDrag(e) {
+        if (!state.draggingId) return;
+
+        const rect = ruler.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        if (x < 0) x = 0;
+        if (x > rect.width) x = rect.width;
+
+        const tab = state.tabStops.find(t => t.id === state.draggingId);
+        if (tab) {
+            tab.position = x;
+            
+            const marker = document.querySelector(`.tab-marker[data-id="${tab.id}"]`);
+            if (marker) {
+                marker.style.left = (x - 10) + 'px';
+                if (y > 50 || y < -50) {
+                    marker.style.opacity = '0.3';
+                } else {
+                    marker.style.opacity = '1';
+                }
+            }
+            renderText();
+        }
+    }
+
+    function handleDragEnd(e) {
+        if (!state.draggingId) return;
+
+        const rect = ruler.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        
+        if (y > 50 || y < -50) {
+            state.tabStops = state.tabStops.filter(t => t.id !== state.draggingId);
+        }
+
+        state.draggingId = null;
+        renderTabs();
+        renderText();
+    }
+
+    // --- CORRECTION DU MENU (Positions relatives) ---
+    function openLeaderMenu(id, mouseX, mouseY) {
+        state.popupTargetId = id;
+        
+        // 1. Afficher d'abord pour avoir les dimensions correctes
+        leaderPopup.style.display = 'flex';
+        
+        // 2. Récupérer le rectangle du conteneur parent (editor-wrapper)
+        const wrapper = document.querySelector('.editor-wrapper');
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const popupRect = leaderPopup.getBoundingClientRect();
+
+        // 3. Calculer la position relative au conteneur
+        // Coordonnée Souris (Viewport) - Coordonnée Conteneur (Viewport)
+        let relativeLeft = mouseX - wrapperRect.left;
+        let relativeTop = mouseY - wrapperRect.top + 10; // Petit décalage vers le bas
+
+        // 4. Empêcher le débordement à droite
+        if (relativeLeft + popupRect.width > wrapperRect.width) {
+            relativeLeft = wrapperRect.width - popupRect.width - 5; // Aligner à droite avec marge
+        }
+
+        // 5. Appliquer les styles
+        leaderPopup.style.left = relativeLeft + 'px';
+        leaderPopup.style.top = relativeTop + 'px';
+    }
+
+    function setLeader(style) {
+        if (state.popupTargetId) {
+            const tab = state.tabStops.find(t => t.id === state.popupTargetId);
+            if (tab) {
+                tab.leader = style;
+                renderText();
+            }
+        }
+        leaderPopup.style.display = 'none';
+        state.popupTargetId = null;
+    }
+
+    // --- Utilitaires ---
+    function toggleNPC() {
+        state.showNPC = !state.showNPC;
+        if(state.showNPC) outputDisplay.classList.add('show-npc');
+        else outputDisplay.classList.remove('show-npc');
+        renderText();
+    }
+
+    function resetApp() {
+        state.tabStops = [];
+        state.content = "Article\tPrix\n";
+        inputArea.value = state.content;
+        renderTabs();
+        renderText();
+    }
+
+    // Démarrage
+    init();
+
+</script>
+
+</body>
+</html>
